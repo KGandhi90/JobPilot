@@ -12,6 +12,8 @@ dependencies = [
     "livekit-agents[deepgram,google,silero,turn-detector]~=1.4",
     "livekit-murf>=0.1.1",
     "livekit-plugins-noise-cancellation~=0.2",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.3",
     "python-dotenv",
 ]
 

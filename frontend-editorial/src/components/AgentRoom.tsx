@@ -17,11 +17,11 @@ export default function AgentRoom() {
       setConnecting(true);
       const res = await fetch("/api/token", { method: "POST" });
       const data = await res.json();
-      
+
       if (!res.ok) {
         throw new Error(data.message || "Failed to get token");
       }
-      
+
       setServerUrl(data.serverUrl);
       setToken(data.participantToken);
     } catch (e) {
@@ -39,15 +39,15 @@ export default function AgentRoom() {
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto px-4 md:px-8 pb-8">
       <Masthead />
-      
+
       <div className="flex-1 flex flex-col justify-center relative">
         {(!token || !connected) && !connecting && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-[var(--paper)] bg-opacity-80">
-            <button 
+            <button
               onClick={handleConnect}
               className="px-8 py-3 border border-[var(--ink)] font-mono uppercase tracking-widest text-sm hover:bg-[var(--ink)] hover:text-[var(--paper)] transition-colors"
             >
-              Start Interview
+              Start Talking
             </button>
           </div>
         )}
@@ -78,7 +78,7 @@ export default function AgentRoom() {
 
           {connected && (
             <div className="w-full flex justify-center mt-12">
-              <button 
+              <button
                 onClick={handleDisconnect}
                 className="px-6 py-2 border border-[var(--accent-primary)] text-[var(--accent-primary)] font-mono uppercase tracking-widest text-xs hover:bg-[var(--accent-primary)] hover:text-[var(--paper)] transition-colors"
               >
