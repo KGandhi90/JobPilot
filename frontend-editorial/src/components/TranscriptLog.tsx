@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { useLocalParticipant, useTrackTranscription, useVoiceAssistant, useTracks } from "@livekit/components-react";
+import { useLocalParticipant, useTrackTranscription, useVoiceAssistant, useTracks, useChat } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
 export default function TranscriptLog() {
   const { localParticipant } = useLocalParticipant();
   const { audioTrack: agentTrack } = useVoiceAssistant();
+  const { chatMessages } = useChat();
 
   // Reactively fetch microphone tracks in the room
   const tracks = useTracks([Track.Source.Microphone]);
@@ -21,12 +22,22 @@ export default function TranscriptLog() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const allSegments = useMemo(() => {
+    const chatSegs = chatMessages.map((msg) => ({
+      id: msg.id,
+      text: msg.message,
+      firstReceivedTime: msg.timestamp,
+      startTime: msg.timestamp,
+      final: true,
+      speaker: msg.from?.identity === localParticipant?.identity ? "User" : (msg.from?.name || "Agent")
+    }));
+
     const combined = [
       ...userSegments.map(s => ({ ...s, speaker: "User" })),
-      ...agentSegments.map(s => ({ ...s, speaker: "Agent" }))
+      ...agentSegments.map(s => ({ ...s, speaker: "Agent" })),
+      ...chatSegs
     ];
     return combined.sort((a, b) => (a.firstReceivedTime || a.startTime || 0) - (b.firstReceivedTime || b.startTime || 0));
-  }, [userSegments, agentSegments]);
+  }, [userSegments, agentSegments, chatMessages, localParticipant]);
 
   useEffect(() => {
     if (scrollRef.current) {
