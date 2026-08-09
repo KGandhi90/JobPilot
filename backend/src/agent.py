@@ -1,7 +1,8 @@
-from livekit.agents import language
+from livekit.agents import language, function_tool, RunContext
 import logging
 import pandas as pd
 import os
+from supabase import create_client, Client
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -16,7 +17,7 @@ from livekit.agents import (
     tokenize,
     room_io,
 )
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
+from livekit.plugins import murf, silero, groq, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
@@ -484,7 +485,14 @@ A successful interaction results in one or more of the following:
 • Job search data becomes more complete and organized
 • The user gains accurate insights from their stored application history
 
-Your purpose is to help users stay organized throughout their job search—not to function as a general AI assistant."""
+Your purpose is to help users stay organized throughout their job search—not to function as a general AI assistant.
+
+CRITICAL INSTRUCTION FOR MEMORY:
+You have a Hybrid Memory system. 
+1. Local Data: Some of the user's older job applications are loaded directly into your instructions below from a local Excel file.
+2. Cloud Data: New job applications are stored in a cloud database (Supabase).
+Whenever the user asks you to summarize their job applications or check their status, you MUST call the `get_supabase_job_applications` tool to fetch the cloud data, and combine it with the local Excel data below before giving your final answer!
+"""
 
 def load_job_data():
     try:
@@ -504,27 +512,105 @@ def load_job_data():
 
 SYSTEM_PROMPT += load_job_data()
 
+# Supabase Initialization
+supabase_url = os.environ.get("SUPABASE_URL", "")
+supabase_key = os.environ.get("SUPABASE_KEY", "")
+supabase: Client | None = None
+if supabase_url and supabase_key:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+        logger.info("Supabase client successfully initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Supabase: {e}")
+else:
+    logger.warning("SUPABASE_URL or SUPABASE_KEY is missing. Cloud memory will be disabled.")
 
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    @function_tool
+    async def get_supabase_job_applications(self, context: RunContext, empty_arg: str = ""):
+        """Use this tool to retrieve all job applications stored in the user's cloud database (Supabase).
+        This data is in addition to the local Excel data you already have.
+        
+        Args:
+            empty_arg: Unused parameter
+            
+        Returns:
+            A list of job applications, or a message indicating the database is empty or not configured.
+        """
+        if not supabase:
+            return "Supabase is not configured. I can only rely on the local Excel data."
+            
+        try:
+            response = supabase.table("job_applications").select("*").execute()
+            if not response.data:
+                return "No job applications found in the Supabase database."
+            
+            data_str = "--- CLOUD DATABASE APPLICATIONS ---\n"
+            for row in response.data:
+                data_str += f"- {row.get('company')} | {row.get('role')} | Status: {row.get('status')} | Date: {row.get('applied_date')}\n"
+                if row.get('notes'):
+                    data_str += f"  Notes: {row.get('notes')}\n"
+            return data_str
+        except Exception as e:
+            logger.error(f"Error fetching from Supabase: {e}")
+            return f"Error fetching data: {e}"
+
+    @function_tool
+    async def add_job_application(self, context: RunContext, company: str, role: str, status: str, applied_date: str, notes: str = ""):
+        """Use this tool to add a new job application to the user's cloud database (Supabase).
+        Use this whenever the user tells you they applied for a new job or want to track a new opportunity.
+        
+        Args:
+            company: The name of the company (e.g. 'Stripe')
+            role: The job title (e.g. 'Software Engineer')
+            status: The current status of the application (e.g. 'Applied', 'Interviewing', 'Rejected')
+            applied_date: The date the application was submitted (e.g. '2023-10-27' or 'Today')
+            notes: Any additional notes or context provided by the user.
+        """
+        if not supabase:
+            return "Supabase is not configured. Cannot add application."
+            
+        try:
+            # Check for duplicates
+            existing = supabase.table("job_applications").select("*").eq("company", company).eq("role", role).execute()
+            if existing.data:
+                return f"An application for {role} at {company} is already being tracked."
+            data = {
+                "company": company,
+                "role": role,
+                "status": status,
+                "applied_date": applied_date,
+                "notes": notes
+            }
+            supabase.table("job_applications").insert(data).execute()
+            
+            # Sync to local Excel file
+            try:
+                excel_file = "job_applications.xlsx"
+                if os.path.exists(excel_file):
+                    df = pd.read_excel(excel_file)
+                else:
+                    df = pd.DataFrame(columns=["Company", "Role", "Status", "Date", "Notes"])
+                
+                new_row = pd.DataFrame([{
+                    "Company": company,
+                    "Role": role,
+                    "Status": status,
+                    "Date": applied_date,
+                    "Notes": notes
+                }])
+                df = pd.concat([df, new_row], ignore_index=True)
+                df.to_excel(excel_file, index=False)
+            except Exception as excel_err:
+                logger.error(f"Failed to sync with Excel: {excel_err}")
+                
+            return f"Successfully saved the application for {role} at {company} to both the cloud database and your local Excel sheet."
+        except Exception as e:
+            logger.error(f"Error adding to Supabase: {e}")
+            return f"Failed to add application: {e}"
 
 
 server = AgentServer()
@@ -552,8 +638,8 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3", language="multi"),
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-3.5-flash-lite",
+        llm=groq.LLM(
+                model="llama-3.3-70b-versatile",
             ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
