@@ -1,4 +1,16 @@
-# Voice Agent Starter — Powered by Murf Falcon
+# JobPilot AI — Your Voice Job Application Assistant
+
+JobPilot is a production voice AI agent powered by Murf Falcon, Groq, and LiveKit. It allows you to speak naturally to an AI assistant that tracks, organizes, and researches your job applications.
+
+### 🧠 Hybrid Memory System & Datasets
+JobPilot uses a hybrid data approach:
+1. **Cloud Database**: Real-time applications are stored and retrieved from a Supabase PostgreSQL database.
+2. **Local Dataset**: As a fallback and historical archive, JobPilot also uses a hand-built local dataset (`job_applications.xlsx`) loaded via Pandas.
+3. **Real-time API**: The agent uses the Wikipedia REST API to research companies on the fly!
+
+---
+
+## Under the Hood: Voice Agent Starter
 
 Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
 

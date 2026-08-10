@@ -3,6 +3,10 @@ import logging
 import pandas as pd
 import os
 from supabase import create_client, Client
+import urllib.request
+import urllib.parse
+import json
+import datetime
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -492,6 +496,9 @@ You have a Hybrid Memory system.
 1. Local Data: Some of the user's older job applications are loaded directly into your instructions below from a local Excel file.
 2. Cloud Data: New job applications are stored in a cloud database (Supabase).
 Whenever the user asks you to summarize their job applications or check their status, you MUST call the `get_supabase_job_applications` tool to fetch the cloud data, and combine it with the local Excel data below before giving your final answer!
+
+CRITICAL INSTRUCTION FOR COMPANY RESEARCH:
+Whenever the user tells you they applied to a new company, or asks for information about a specific company, you MUST call the `search_company_background` tool to fetch real-time information about the company. Use this information to give tailored advice or contextualize the conversation.
 """
 
 def load_job_data():
@@ -611,6 +618,44 @@ class Assistant(Agent):
         except Exception as e:
             logger.error(f"Error adding to Supabase: {e}")
             return f"Failed to add application: {e}"
+
+    @function_tool
+    async def search_company_background(self, context: RunContext, company_name: str):
+        """Use this tool to fetch real-time background information and research about a company from Wikipedia.
+        Call this tool whenever the user mentions they applied to a new company, or specifically asks what a company does.
+        
+        Args:
+            company_name: The name of the company to look up (e.g., 'Apple Inc.', 'Anthropic')
+        """
+        try:
+            query = urllib.parse.quote(company_name)
+            url = f"https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles={query}&format=json"
+            
+            # Use a custom user agent as required by Wikipedia's API policy
+            req = urllib.request.Request(url, headers={'User-Agent': 'JobPilotVoiceAgent/1.0'})
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                
+            pages = data.get("query", {}).get("pages", {})
+            page_id = list(pages.keys())[0]
+            
+            if page_id == "-1":
+                return f"Tell the user: 'I tried to look up {company_name} on Wikipedia, but I couldn't find a matching company profile.'"
+                
+            extract = pages[page_id].get("extract", "No summary available.")
+            
+            # Step 5 requirement: Say when the data is from
+            current_time = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
+            return f"Data retrieved on {current_time}. Wikipedia Summary for {company_name}:\n{extract}"
+            
+        except urllib.error.URLError as e:
+            logger.error(f"Failed to reach Wikipedia API: {e}")
+            # Step 4 requirement: Handle the failure path out loud
+            return "Tell the user: 'I apologize, but the external Wikipedia database timed out or is unreachable, so I cannot fetch the company background right now.'"
+        except Exception as e:
+            logger.error(f"Error searching company background: {e}")
+            return "Tell the user: 'An unexpected error occurred while trying to research the company.'"
 
 
 server = AgentServer()
