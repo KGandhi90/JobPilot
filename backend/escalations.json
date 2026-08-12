@@ -1,0 +1,38 @@
+[
+    {
+        "reference_id": "#REF-38EAAE",
+        "timestamp": "2026-08-12T22:13:48.438932",
+        "issue_summary": "Needs human coaching for interview preparation",
+        "urgency_level": "Medium",
+        "preferred_contact_method": "Phone",
+        "troubleshooting_steps_taken": "Practiced interview session with AI",
+        "status": "Open"
+    },
+    {
+        "reference_id": "#REF-50CA39",
+        "timestamp": "2026-08-12T22:24:28.008092",
+        "issue_summary": "User needs help with interview practice and feels they didn't do well, requesting human coaching",
+        "urgency_level": "Medium",
+        "preferred_contact_method": "Email",
+        "troubleshooting_steps_taken": "Had an interview practice session yesterday, now seeking human interaction for improvement",
+        "status": "Open"
+    },
+    {
+        "reference_id": "#REF-AD838B",
+        "timestamp": "2026-08-12T22:28:46.690285",
+        "issue_summary": "User had issues with interview prep questions and didn't receive relevant responses from the agent",
+        "urgency_level": "Medium",
+        "preferred_contact_method": "Phone",
+        "troubleshooting_steps_taken": "User tried asking the agent for clarification but didn't receive a relevant response",
+        "status": "Open"
+    },
+    {
+        "reference_id": "#REF-E18199",
+        "timestamp": "2026-08-12T22:42:51.984297",
+        "issue_summary": "User needs human assistance with interview preparation, specifically with relevant questions.",
+        "urgency_level": "Medium",
+        "preferred_contact_method": "Email",
+        "troubleshooting_steps_taken": "Discussed interview preparation with the user.",
+        "status": "Open"
+    }
+]

@@ -491,6 +491,19 @@ A successful interaction results in one or more of the following:
 
 Your purpose is to help users stay organized throughout their job search—not to function as a general AI assistant.
 
+---
+
+# HUMAN ESCALATION
+
+There are exactly two situations where you MUST stop and escalate to a human:
+1. Professional Coaching: The user asks for human career coaching, human resume review, or advice you cannot confidently provide.
+2. Frustration: The user is upset, extremely frustrated, or stuck in a loop.
+
+When either situation occurs:
+1. ASK FOR PERMISSION: Tell the caller you want to create a support ticket for a human coach. Briefly tell them what information you will send. Ask if they approve. If they say no, DO NOT create the request.
+2. If they say yes, call the `create_escalation` tool with a short summary of the issue. NEVER send the full conversation. NEVER include passwords, OTPs, PINs, account numbers, or private info.
+3. CLEAR NEXT STEP: After the tool returns a reference ID (e.g. #REF-1234), tell the caller their reference ID and explicitly explain what happens next (e.g., "A human coach will review this and reach out to you."). Do not promise an immediate reply.
+
 CRITICAL INSTRUCTION FOR MEMORY:
 You have a Hybrid Memory system. 
 1. Local Data: Some of the user's older job applications are loaded directly into your instructions below from a local Excel file.
@@ -656,6 +669,46 @@ class Assistant(Agent):
         except Exception as e:
             logger.error(f"Error searching company background: {e}")
             return "Tell the user: 'An unexpected error occurred while trying to research the company.'"
+    @function_tool
+    async def create_escalation(self, context: RunContext, issue_summary: str, urgency_level: str, preferred_contact_method: str, troubleshooting_steps_taken: str):
+        """Use this tool ONLY AFTER getting the user's permission to escalate their issue to a human coach or support agent.
+        
+        Args:
+            issue_summary: A concise summary of why the user needs human help. Do NOT include private info.
+            urgency_level: 'Low', 'Medium', 'High', or 'Emergency' based on the user's situation.
+            preferred_contact_method: How the user wants the human to contact them (e.g., 'Email', 'Phone').
+            troubleshooting_steps_taken: What you (the AI) already tried or discussed with the user.
+        """
+        import uuid
+        import json
+        import os
+        from datetime import datetime
+        
+        ref_id = f"#REF-{uuid.uuid4().hex[:6].upper()}"
+        escalation_data = {
+            "reference_id": ref_id,
+            "timestamp": datetime.now().isoformat(),
+            "issue_summary": issue_summary,
+            "urgency_level": urgency_level,
+            "preferred_contact_method": preferred_contact_method,
+            "troubleshooting_steps_taken": troubleshooting_steps_taken,
+            "status": "Open"
+        }
+        
+        file_path = "escalations.json"
+        try:
+            escalations = []
+            if os.path.exists(file_path):
+                with open(file_path, "r") as f:
+                    escalations = json.load(f)
+            escalations.append(escalation_data)
+            with open(file_path, "w") as f:
+                json.dump(escalations, f, indent=4)
+            logger.info(f"Escalation {ref_id} created successfully.")
+            return f"Success. The escalation has been recorded. The reference ID is {ref_id}."
+        except Exception as e:
+            logger.error(f"Failed to save escalation: {e}")
+            return "Tell the user: 'I apologize, but I encountered a technical error while creating the support ticket. Please try again later.'"
 
 
 server = AgentServer()
