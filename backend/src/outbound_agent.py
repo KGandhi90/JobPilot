@@ -693,9 +693,47 @@ async def outbound_agent_main(ctx: JobContext):
     # # Start the avatar and wait for it to join
     # await avatar.start(session, room=ctx.room)
 
+    agent_instance = Assistant()
+    start_time = datetime.datetime.now()
+
+    @ctx.room.on("disconnected")
+    def on_disconnected():
+        file_path = "analytics.json"
+        import json, os
+        try:
+            analytics = {"total_calls": 0, "successful_calls": 0, "failed_calls": 0, "calls": []}
+            if os.path.exists(file_path):
+                with open(file_path, "r") as f:
+                    analytics = json.load(f)
+            
+            end_time = datetime.datetime.now()
+            duration_secs = int((end_time - start_time).total_seconds())
+            duration_fmt = f"{duration_secs // 60}m {duration_secs % 60}s" if duration_secs >= 60 else f"{duration_secs}s"
+
+            outcome = "success" if getattr(agent_instance, "is_successful", False) else "failed"
+            analytics["total_calls"] += 1
+            if outcome == "success":
+                analytics["successful_calls"] += 1
+            else:
+                analytics["failed_calls"] += 1
+                
+            analytics["calls"].append({
+                "timestamp": start_time.isoformat(),
+                "channel": "sip",
+                "duration": duration_fmt,
+                "outcome": outcome,
+                "agent": "outbound"
+            })
+            
+            with open(file_path, "w") as f:
+                json.dump(analytics, f, indent=4)
+            logger.info(f"Recorded outbound call analytics: {outcome} (sip, {duration_fmt})")
+        except Exception as e:
+            logger.error(f"Failed to record analytics: {e}")
+
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=agent_instance,
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(

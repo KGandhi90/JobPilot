@@ -548,6 +548,7 @@ else:
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        self.is_successful = False
 
     @function_tool
     async def get_supabase_job_applications(self, context: RunContext, empty_arg: str = ""):
@@ -627,6 +628,7 @@ class Assistant(Agent):
             except Exception as excel_err:
                 logger.error(f"Failed to sync with Excel: {excel_err}")
                 
+            self.is_successful = True
             return f"Successfully saved the application for {role} at {company} to both the cloud database and your local Excel sheet."
         except Exception as e:
             logger.error(f"Error adding to Supabase: {e}")
@@ -660,6 +662,7 @@ class Assistant(Agent):
             
             # Step 5 requirement: Say when the data is from
             current_time = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
+            self.is_successful = True
             return f"Data retrieved on {current_time}. Wikipedia Summary for {company_name}:\n{extract}"
             
         except urllib.error.URLError as e:
@@ -705,6 +708,7 @@ class Assistant(Agent):
             with open(file_path, "w") as f:
                 json.dump(escalations, f, indent=4)
             logger.info(f"Escalation {ref_id} created successfully.")
+            self.is_successful = True
             return f"Success. The escalation has been recorded. The reference ID is {ref_id}."
         except Exception as e:
             logger.error(f"Failed to save escalation: {e}")
@@ -774,9 +778,49 @@ async def my_agent(ctx: JobContext):
     # # Start the avatar and wait for it to join
     # await avatar.start(session, room=ctx.room)
 
+    agent_instance = Assistant()
+    start_time = datetime.datetime.now()
+
+    @ctx.room.on("disconnected")
+    def on_disconnected():
+        file_path = "analytics.json"
+        import json, os
+        try:
+            analytics = {"total_calls": 0, "successful_calls": 0, "failed_calls": 0, "calls": []}
+            if os.path.exists(file_path):
+                with open(file_path, "r") as f:
+                    analytics = json.load(f)
+            
+            end_time = datetime.datetime.now()
+            duration_secs = int((end_time - start_time).total_seconds())
+            duration_fmt = f"{duration_secs // 60}m {duration_secs % 60}s" if duration_secs >= 60 else f"{duration_secs}s"
+
+            channel = "sip" if any(p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP for p in ctx.room.remote_participants.values()) else "browser"
+
+            outcome = "success" if agent_instance.is_successful else "failed"
+            analytics["total_calls"] += 1
+            if outcome == "success":
+                analytics["successful_calls"] += 1
+            else:
+                analytics["failed_calls"] += 1
+                
+            analytics["calls"].append({
+                "timestamp": start_time.isoformat(),
+                "channel": channel,
+                "duration": duration_fmt,
+                "outcome": outcome,
+                "agent": "inbound"
+            })
+            
+            with open(file_path, "w") as f:
+                json.dump(analytics, f, indent=4)
+            logger.info(f"Recorded call analytics: {outcome} ({channel}, {duration_fmt})")
+        except Exception as e:
+            logger.error(f"Failed to record analytics: {e}")
+
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=agent_instance,
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(

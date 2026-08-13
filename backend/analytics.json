@@ -1,0 +1,21 @@
+{
+    "total_calls": 2,
+    "successful_calls": 1,
+    "failed_calls": 1,
+    "calls": [
+        {
+            "timestamp": "2026-08-13T23:20:54.941731",
+            "channel": "browser",
+            "duration": "2m 3s",
+            "outcome": "success",
+            "agent": "inbound"
+        },
+        {
+            "timestamp": "2026-08-13T23:23:32.110089",
+            "channel": "browser",
+            "duration": "28s",
+            "outcome": "failed",
+            "agent": "inbound"
+        }
+    ]
+}
