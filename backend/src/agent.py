@@ -14,8 +14,10 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    ChatContext,
     JobContext,
     JobProcess,
+    RunContext,
     cli,
     inference,
     tokenize,
@@ -545,6 +547,48 @@ if supabase_url and supabase_key:
 else:
     logger.warning("SUPABASE_URL or SUPABASE_KEY is missing. Cloud memory will be disabled.")
 
+# ─── SPECIALIST: Interview Practice Coach ────────────────────────────────────
+
+INTERVIEW_PROMPT = """# SYSTEM ROLE
+
+You are the JobPilot Interview Practice Coach, a specialist agent with one clear job: helping the user practice job interview questions.
+
+You were called in from the main JobPilot agent because the user wants to practice for an interview.
+
+Your ONE job on this call:
+1. Ask which role they are interviewing for (if not already known from the conversation context).
+2. Ask the difficulty level they want: Beginner, Intermediate, or Advanced.
+3. Adopt the persona of a Hiring Manager for that specific role.
+4. Ask ONE well-crafted interview question suited to the role and difficulty.
+5. Listen to their spoken answer.
+6. Give structured, constructive feedback focusing on: clarity, structure (STAR method), and confidence.
+7. Ask if they want another question or if they are done.
+
+Do NOT help with job application tracking, company research, or escalations — that is the main agent's job.
+Your responses are concise and spoken-word-friendly. No markdown bullets or emojis.
+"""
+
+
+class InterviewAgent(Agent):
+    def __init__(self, chat_ctx: ChatContext | None = None) -> None:
+        super().__init__(
+            instructions=INTERVIEW_PROMPT,
+            chat_ctx=chat_ctx,
+            tts=murf.TTS(
+                voice="Samar",
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True,
+            ),
+        )
+
+    async def on_enter(self) -> None:
+        await self.session.generate_reply(
+            instructions="Introduce yourself briefly as the JobPilot Interview Practice Coach. Tell the user you're here specifically to help them practice for job interviews. Then immediately ask them which role they are interviewing for today and what difficulty level they want: Beginner, Intermediate, or Advanced."
+        )
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
@@ -714,6 +758,27 @@ class Assistant(Agent):
             logger.error(f"Failed to save escalation: {e}")
             return "Tell the user: 'I apologize, but I encountered a technical error while creating the support ticket. Please try again later.'"
 
+    @function_tool
+    async def transfer_to_interview_coach(self, context: RunContext, empty_arg: str = "") -> tuple[Agent, str]:
+        """Transfer the user to the Interview Practice Coach specialist.
+        Use this tool when the user wants to:
+        - Do a mock interview or practice interview questions
+        - Prepare for an upcoming job interview
+        - Practice answering behavioral or technical questions
+        - Get interview tips or question-and-answer practice for a specific role
+        Do NOT use this for general job tracking or application questions.
+
+        Args:
+            empty_arg: Unused parameter.
+        """
+        interview_agent = InterviewAgent(
+            chat_ctx=self.chat_ctx.copy(exclude_instructions=True)
+        )
+        return interview_agent, "I'll connect you to our Interview Practice Coach right now!"
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 server = AgentServer()
 
