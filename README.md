@@ -1,30 +1,22 @@
-# JobPilot AI — Your Voice Job Application Assistant
+# JobPilot — Voice AI Job Application Assistant
 
-JobPilot is a production voice AI agent powered by Murf Falcon, Groq, and LiveKit. It allows you to speak naturally to an AI assistant that tracks, organizes, and researches your job applications.
+> **JobPilot** is a voice-first AI assistant for Indian job seekers. Talk to it to log applications, get real-time company research, and practice mock interviews with a specialist agent. Built with Deepgram STT, Groq LLM, and Murf Falcon TTS on LiveKit. Features hybrid Supabase + Excel memory, outbound SIP calls, human escalation, and a live analytics dashboard.
 
-### 🧠 Hybrid Memory System & Datasets
-JobPilot uses a hybrid data approach:
-1. **Cloud Database**: Real-time applications are stored and retrieved from a Supabase PostgreSQL database.
-2. **Local Dataset**: As a fallback and historical archive, JobPilot also uses a hand-built local dataset (`job_applications.xlsx`) loaded via Pandas.
-3. **Real-time API**: The agent uses the Wikipedia REST API to research companies on the fly!
-
----
-
-## Under the Hood: Voice Agent Starter
-
-Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming)
+[![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
 ---
 
-## Why Murf Falcon
+## What It Does
 
-- **55ms model latency** - fastest production TTS
-- **130ms time-to-first-audio** across 10+ global regions
-- **$0.01/1000 characters** - up to 10x cheaper than alternatives
-- **150+ voices** across 35+ languages
-- **99.38% pronunciation accuracy**
+JobPilot works in two modes:
+
+**Inbound (Browser):** Open the web app and speak. Log new job applications, update existing ones, get a summary of all your tracked roles, and research companies — all by voice. A live **Dispatch Desk** analytics dashboard at `/dispatch` tracks your call success rate in real time.
+
+**Outbound (SIP):** JobPilot calls *you* on your phone via a SIP trunk for a scheduled daily interview practice session. Pick the role and difficulty, and a specialist Interview Coach agent grills you like a hiring manager, then gives structured STAR-method feedback on your answer.
 
 ---
 
@@ -33,7 +25,7 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 ```mermaid
 flowchart LR
     A[🎙️ User speaks] -->|audio| B[Deepgram STT]
-    B -->|text| C[LLM]
+    B -->|text| C[Groq LLM]
     C -->|response text| D[Murf Falcon TTS]
     D -->|audio| E[LiveKit]
     E -->|stream| F[🔊 User hears]
@@ -48,12 +40,66 @@ flowchart LR
 
 ---
 
+## Why Murf Falcon
+
+- **55ms model latency** — fastest production TTS available
+- **130ms time-to-first-audio** across 10+ global regions
+- **150+ voices** across 35+ languages including Indian English (Anisha, Samar, Pooja)
+- **99.38% pronunciation accuracy**
+- **$0.01/1000 characters** — up to 10x cheaper than alternatives
+
+JobPilot uses **Anisha** (Indian English, female) as the main agent voice and **Samar** (Indian English, male) for the Interview Coach specialist — making the agent handoff audibly clear.
+
+---
+
+## Features
+
+### 🎙️ Voice Pipeline
+Full real-time voice pipeline: Deepgram `nova-3` (multilingual STT) → Groq `llama-3.3-70b-versatile` (LLM) → Murf Falcon (TTS), orchestrated by LiveKit Agents SDK with Silero VAD and the Multilingual turn detector.
+
+### 🧠 Hybrid Memory
+Two-layer memory system:
+- **Supabase** (cloud PostgreSQL) — all applications stored persistently across sessions
+- **Excel** (`job_applications.xlsx`) — loaded at startup via Pandas and injected into the system prompt as historical context
+
+### 🔍 Real-Time Company Research
+The `search_company_background` tool calls the Wikipedia REST API to fetch a plain-text company summary whenever the user mentions a new company they applied to.
+
+### 📞 Outbound SIP Calls
+`backend/src/dial.py` uses the LiveKit Python Server SDK to create a room, dispatch the outbound Interview Coach agent, and dial a SIP URI. Works with Linphone and any SIP-compatible soft phone.
+
+> **Note:** In Linphone, go to Preferences → Calls → Media Encryption → set to **None** to prevent calls from dropping immediately.
+
+### 🆘 Human Escalation
+The `create_escalation` tool handles two situations:
+1. User requests professional career coaching or human resume review
+2. User is clearly frustrated or stuck
+
+The agent asks for permission first, generates a unique `#REF-XXXXXX` ticket ID, saves a privacy-safe record to `backend/escalations.json`, and reads the reference ID back to the user.
+
+### 📊 Call Analytics — Dispatch Desk
+A live broadcast-styled dashboard at `http://localhost:3000/dispatch`:
+- **Total calls / Successful / Failed** in large mono numerals
+- **Success rate** percentage
+- **Recent call history** manifest (timestamp, channel, duration, outcome)
+- Auto-refreshes every 3 seconds by polling `/api/analytics`
+- Backed by `backend/analytics.json`, written on every room disconnect
+
+### 🤝 Agent Handoff to Specialist
+The main `Assistant` agent can hand the live conversation to a dedicated `InterviewAgent` specialist. The specialist:
+- Gets its own system prompt (interview-only, cannot track applications)
+- Uses the **Samar** voice to signal the switch
+- Receives full conversation history via `chat_ctx.copy(exclude_instructions=True)`
+- Auto-introduces itself via an `on_enter()` hook
+
+---
+
 ## Quickstart
 
 ### Prerequisites
 
 - **Python** 3.10+
-- **[uv](https://docs.astral.sh/uv/)** - fast Python package manager
+- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager
   ```bash
   # macOS/Linux
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -61,31 +107,36 @@ flowchart LR
   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
   ```
 - **Node.js** 18+
-- **pnpm** — fast Node package manager
+- **pnpm**
   ```bash
   npm install -g pnpm
   ```
-- A [LiveKit](https://cloud.livekit.io/) project (free tier available)
+- A [LiveKit Cloud](https://cloud.livekit.io/) project (free tier available)
 
 ### Step 1: Clone the repo
 
 ```bash
-git clone https://github.com/murf-ai/murf-livekit-starter.git
-cd murf-livekit-starter
+git clone https://github.com/KGandhi90/JobPilot.git
+cd JobPilot
 ```
 
 ### Step 2: Set up environment variables
 
-Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each). You need:
+Create `.env.local` in `backend/` and `frontend-editorial/` (copy from `.env.example` in each).
 
-| Variable                               | Where to get it                                        | Required |
-| -------------------------------------- | ------------------------------------------------------ | -------- |
-| `LIVEKIT_URL`                          | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_KEY`                      | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_SECRET`                   | LiveKit Cloud dashboard                                | Yes      |
-| `MURF_API_KEY`                         | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes      |
-| `DEEPGRAM_API_KEY`                     | [deepgram.com](https://deepgram.com)                   | Yes      |
-| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice                                  | Yes      |
+| Variable | Where to get it | Required |
+|---|---|---|
+| `LIVEKIT_URL` | LiveKit Cloud dashboard | ✅ |
+| `LIVEKIT_API_KEY` | LiveKit Cloud dashboard | ✅ |
+| `LIVEKIT_API_SECRET` | LiveKit Cloud dashboard | ✅ |
+| `MURF_API_KEY` | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | ✅ |
+| `DEEPGRAM_API_KEY` | [deepgram.com](https://deepgram.com) | ✅ |
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | ✅ |
+| `SUPABASE_URL` | [supabase.com](https://supabase.com) dashboard | ✅ |
+| `SUPABASE_KEY` | Supabase project API key | ✅ |
+| `SIP_TRUNK_ID` | LiveKit SIP dashboard | For outbound calls only |
+
+> ⚠️ **Never commit your `.env.local` files.** They are already in `.gitignore`.
 
 ### Step 3: Install backend dependencies
 
@@ -98,177 +149,110 @@ uv run python src/agent.py download-files
 ### Step 4: Install frontend dependencies
 
 ```bash
-cd frontend
+cd frontend-editorial
 pnpm install
 ```
 
-### Step 5: Run it
+### Step 5: Run everything
 
-**Option A - All-in-one (from repo root):**
-
-```bash
-# macOS/Linux
-chmod +x start_app.sh
-./start_app.sh
-
-# Windows (PowerShell)
+```powershell
+# Windows (from the Day1/ root)
 .\start_app.ps1
 ```
 
-**Option B - Separate terminals:**
+```bash
+# macOS/Linux
+chmod +x start_app.sh && ./start_app.sh
+```
+
+This starts the backend agent and the Next.js frontend in separate windows.
+
+Open **http://localhost:3000** and click **Start Talking**.  
+Open **http://localhost:3000/dispatch** for the live analytics dashboard.
+
+### Optional: Outbound Interview Call
 
 ```bash
-# Terminal 1 — LiveKit Server
-livekit-server --dev
-
-# Terminal 2 — Backend agent
-cd backend && uv run python src/agent.py dev
-
-# Terminal 3 — Frontend
-cd frontend && pnpm dev
+cd backend
+uv run python src/dial.py
 ```
 
-Then open **http://localhost:3000** in your browser.
-
-You should now see the voice agent UI. Click **Start talking**, allow microphone access, and speak — the agent will respond with Murf Falcon TTS. Ensure your backend and (if using Option B) LiveKit server are running.
-
----
-
-## Deploy
-
-Want to deploy this beyond localhost? You'll need to deploy **two services**: the backend agent and the frontend. Both must use the same LiveKit project.
-
-> This is a two-service app — the backend agent and the frontend UI deploy separately. You'll need both running and connected to the same LiveKit project.
-
-### Backend (Python agent) — Deploy to Railway
-
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/tIVCF1?referralCode=cNjn2P&utm_medium=integration&utm_source=template&utm_campaign=generic)
-
-Set these environment variables in Railway:
-
-- `MURF_API_KEY`
-- `DEEPGRAM_API_KEY`
-- `GOOGLE_API_KEY` or `OPENAI_API_KEY`
-- `LIVEKIT_URL`
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-
-The backend runs as a long-lived Python process that connects to LiveKit as an agent. Railway handles this well.
-
-### Frontend (Next.js) — Deploy to Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/murf-ai/murf-livekit-starter&root-directory=frontend&env=LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET&project-name=murf-voice-agent&repository-name=murf-voice-agent)
-
-Set these environment variables in Vercel:
-
-- `LIVEKIT_URL`
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-- `AGENT_NAME` (optional — for explicit agent dispatch)
-
-The frontend is a standard Next.js app. Point it at the same LiveKit instance your backend agent is connected to.
-
-### Connecting them
-
-The frontend and backend don't call each other directly — they both connect to **LiveKit**, which handles the real-time audio transport.
-
-1. Use the **same** `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on both Railway and Vercel
-2. Set `AGENT_NAME=my-agent` on Vercel — this matches the `agent_name="my-agent"` registered in `backend/src/agent.py`
-3. Verify: Railway logs should show the agent connected to LiveKit. Open your Vercel URL, click **Start talking** — the agent should respond
-
-If the agent doesn't connect, double-check that both services point to the same LiveKit project and that the backend is running (check Railway logs).
-
----
-
-## Change the Use Case
-
-The default system prompt makes this a **customer support agent**. You can change the agent’s behavior by editing the prompt.
-
-**Where the prompt lives:** `backend/src/agent.py`- the `SYSTEM_PROMPT` constant (near the top of the file, after the imports). Change that string to change what your voice agent does.
-
-### Example prompts (copy-paste)
-
-**Customer Support (default):**
-
-```
-You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate.
-```
-
-**Language Tutor:**
-
-```
-You are a patient and encouraging language tutor helping the user practice conversational Spanish. Speak primarily in Spanish but switch to English to explain grammar or vocabulary when needed. Correct mistakes gently and suggest better phrasing. Keep conversations natural and fun.
-```
-
-**AI Receptionist:**
-
-```
-You are a professional receptionist for a medical clinic. Help callers schedule appointments, answer questions about office hours and services, and take messages for doctors. Be warm but efficient. Ask for the caller's name and reason for calling upfront.
-```
-
-See the Configuration section below for voice, STT, and LLM options.
-
----
-
-## Configuration
-
-### Murf voice
-
-Edit the `tts=murf.TTS(...)` call in `backend/src/agent.py`. Set the `voice` argument to any Murf voice ID. Examples:
-
-- `Anisha` — Indian English (female, default in this starter)
-- `Pooja` — Indian English (female)
-- `Samar` — Indian English (male)
-- `Amara` — US English (female)
-- `Gordon` — US English (male)
-- `Hazel` — UK English (female)
-- `Bertie` — UK English (male)
-
-Browse all voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
-
-### STT provider
-
-STT is configured in `backend/src/agent.py` in the `AgentSession(stt=...)` call. The default is Deepgram (`deepgram.STT(model="nova-3")`). You can swap to another LiveKit-compatible STT plugin if needed.
-
-### LLM (Gemini vs OpenAI)
-
-- **Gemini (default):** Set `GOOGLE_API_KEY` and use `llm=google.LLM(model="gemini-3.5-flash-lite")` in `agent.py`.
-- **OpenAI:** Set `OPENAI_API_KEY`, add the OpenAI plugin, and use the corresponding `llm=openai.LLM(...)` in `agent.py`.
-
-### Audio format
-
-Murf Falcon and LiveKit handle audio format internally. For advanced options, see [Murf API docs](https://murf.ai/api/docs) and [LiveKit docs](https://docs.livekit.io).
+This places a SIP call to the number configured in `dial.py`. Make sure Linphone (or your SIP client) is running with Media Encryption set to **None**.
 
 ---
 
 ## Project Structure
 
 ```
-murf-livekit-starter/
-├── backend/                 # Python voice agent (LiveKit Agents + Murf Falcon)
+Day1/
+├── backend/
 │   ├── src/
-│   │   └── agent.py         # Agent entrypoint, pipeline (STT/LLM/TTS), system prompt
-│   ├── tests/               # Agent tests
-│   ├── .env.example         # Backend env template
-│   ├── pyproject.toml       # Python deps (uv)
-│   └── railway.toml         # Railway deploy config
-├── frontend/                # Next.js UI for voice sessions
-│   ├── app/
-│   │   ├── page.tsx         # Main page
-│   │   └── api/token/       # LiveKit token endpoint (dev)
-│   ├── components/          # UI (agents-ui, app config, theme)
-│   ├── app-config.ts        # Branding, title, button text, accent
-│   ├── .env.example         # Frontend env template
-│   └── package.json         # Node deps (pnpm)
-├── start_app.sh             # Start LiveKit + backend + frontend (macOS/Linux)
-├── start_app.ps1            # Start LiveKit + backend + frontend (Windows)
-├── README.md                # This file
+│   │   ├── agent.py              # Main inbound agent (Assistant + InterviewAgent)
+│   │   ├── outbound_agent.py     # Outbound Interview Coach agent
+│   │   └── dial.py               # Script to place outbound SIP calls
+│   ├── analytics.json            # Auto-generated call outcome records
+│   ├── escalations.json          # Auto-generated human escalation tickets
+│   ├── job_applications.xlsx     # Local application dataset (Pandas)
+│   ├── .env.example
+│   └── pyproject.toml
+├── frontend-editorial/
+│   ├── src/app/
+│   │   ├── page.tsx              # Homepage / voice session UI
+│   │   ├── dispatch/page.tsx     # Dispatch Desk analytics dashboard
+│   │   ├── dashboard/page.tsx    # Alias for /dispatch
+│   │   └── api/analytics/route.ts # API endpoint for analytics polling
+│   ├── .env.example
+│   └── package.json
+├── BUILD_SUMMARY.md              # Day-by-day build log
+├── start_app.ps1                 # Windows launcher
+├── start_app.sh                  # macOS/Linux launcher
+└── README.md
 ```
 
-For deeper documentation on each part, see:
+---
 
-- [Backend Documentation](./backend/README.md) — agent pipeline, voice/LLM/STT configuration, testing, deployment
-- [Frontend Documentation](./frontend/README.md) — UI customization, visualizers, theming, component architecture
+## Configuration
+
+### Voices
+
+Edit `tts=murf.TTS(voice="...")` in `agent.py` or `outbound_agent.py`:
+
+| Voice | Accent | Gender |
+|---|---|---|
+| `Anisha` | Indian English | Female (main agent default) |
+| `Samar` | Indian English | Male (specialist default) |
+| `Pooja` | Indian English | Female |
+| `Amara` | US English | Female |
+| `Gordon` | US English | Male |
+
+Browse all 150+ voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library)
+
+### LLM
+
+JobPilot uses **Groq** (`llama-3.3-70b-versatile`) for its speed and quality. To swap to another LLM, change the `llm=groq.LLM(...)` call in `agent.py` to any LiveKit-compatible LLM plugin.
+
+### Supabase Schema
+
+Create a `job_applications` table in your Supabase project:
+
+```sql
+create table job_applications (
+  id uuid default gen_random_uuid() primary key,
+  company text,
+  role text,
+  status text,
+  applied_date text,
+  notes text
+);
+```
+
+---
+
+## 📝 Blog Post
+
+Read the full build story — architecture, features, challenges, and how to run it yourself:
+
+🔗 **[How I Built JobPilot: A Voice AI Job Application Assistant in 10 Days](#)** ← *https://dev.to/kgandhi90/jobpilot-a-10-day-build-log-for-a-voice-first-job-assistant-2abf*
 
 ---
 
@@ -276,12 +260,13 @@ For deeper documentation on each part, see:
 
 - [Murf API Docs](https://murf.ai/api/docs)
 - [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library)
-- [LiveKit Docs](https://docs.livekit.io)
-- [Deepgram Docs](https://developers.deepgram.com)
 - [Murf Falcon Benchmarks](https://murf.ai/falcon/benchmarks)
-- [TTS Latency Benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — run your own p50/p95 tests across providers
+- [LiveKit Docs](https://docs.livekit.io)
+- [LiveKit Agents SDK](https://docs.livekit.io/agents)
+- [Deepgram Docs](https://developers.deepgram.com)
+- [Supabase Docs](https://supabase.com/docs)
+- [Groq Console](https://console.groq.com)
 - [Murf Discord](https://discord.gg/FbKAy96Sz7)
-- [Murf Startup Incubator](https://murf.ai/api) — 50M free characters for startups
 
 ---
 
